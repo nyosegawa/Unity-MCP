@@ -24,14 +24,16 @@ namespace com.IvanMurzak.Unity.MCP.Editor.API
             DestructiveHint = false
         )]
         [Description("Executes an input sequence in Play Mode and captures the result. " +
-            "Enters Play Mode if not already playing, runs the specified input actions, " +
-            "waits for completion, then captures a screenshot and game state. " +
-            "Requires com.nyosegawa.agent-bridge package with PlaytestRunner component. " +
-            "NOTE: This tool is a stub — PlaytestRunner will be implemented in Phase 4.")]
+            "The scene must already be in Play Mode (use 'editor-application-set-state' first). " +
+            "Runs the specified input actions via InputSimulator, waits for completion, " +
+            "then captures a debug screenshot and game state. " +
+            "Returns the session ID — use 'playtest-observe' to get results. " +
+            "Requires com.nyosegawa.agent-bridge package.")]
         public ResponseCallTool PlaytestRun
         (
-            [Description("JSON-encoded input sequence. Format: [{\"action\":\"key_down\",\"key\":\"space\",\"delay_ms\":100}, ...]. " +
-                "Supported actions: key_down, key_up, move_horizontal, move_vertical, wait.")]
+            [Description("JSON array of input actions. Format: [{\"action\":\"key_down\",\"key\":\"space\",\"delayMs\":100}, ...]. " +
+                "Supported actions: key_down, key_up, wait. " +
+                "Keys: space, left, right, up, down, a, d, w, s, escape, return.")]
             string inputSequenceJson,
             [Description("Maximum duration in seconds before timeout.")]
             float timeoutSeconds = 10f,
@@ -43,11 +45,18 @@ namespace com.IvanMurzak.Unity.MCP.Editor.API
             if (bridgeType == null)
                 return AgentBridgeNotInstalled();
 
-            return ResponseCallTool.Error(
-                "[Error] playtest-run is not yet implemented. " +
-                "PlaytestRunner will be added to com.nyosegawa.agent-bridge in Phase 4. " +
-                "For now, use 'editor-application-set-state' to enter Play Mode, " +
-                "then 'screenshot-debug' and 'game-state-text' to observe results.");
+            return MainThread.Instance.Run(() =>
+            {
+                var sessionId = InvokeStatic(bridgeType, "RunPlaytest",
+                    inputSequenceJson, timeoutSeconds, captureScreenshot) as string;
+
+                if (string.IsNullOrEmpty(sessionId))
+                    return ResponseCallTool.Error("[Error] Failed to start playtest session.");
+
+                return ResponseCallTool.Text(
+                    $"[Success] Playtest session started. Session ID: {sessionId}. " +
+                    "Use 'playtest-observe' to get results after the sequence completes.");
+            });
         }
     }
 }

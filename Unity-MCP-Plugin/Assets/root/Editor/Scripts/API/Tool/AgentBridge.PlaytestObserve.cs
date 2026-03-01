@@ -24,24 +24,41 @@ namespace com.IvanMurzak.Unity.MCP.Editor.API
             ReadOnlyHint = true,
             IdempotentHint = true
         )]
-        [Description("Retrieves the status and results of a running or completed playtest. " +
-            "Returns the current state, captured screenshots, game state snapshots, and any errors. " +
-            "Requires com.nyosegawa.agent-bridge package with PlaytestRunner component. " +
-            "NOTE: This tool is a stub — PlaytestRunner will be implemented in Phase 4.")]
+        [Description("Retrieves the status and results of a playtest session. " +
+            "Returns session state, actions executed, game state text, and optionally a screenshot. " +
+            "If sessionId is empty, returns the most recent session. " +
+            "Requires com.nyosegawa.agent-bridge package.")]
         public ResponseCallTool PlaytestObserve
         (
-            [Description("ID of the playtest session to observe. If empty, returns the most recent session.")]
-            string sessionId = ""
+            [Description("Session ID from playtest-run. Leave empty for the most recent session.")]
+            string sessionId = "",
+            [Description("Include the screenshot in the response (if captured).")]
+            bool includeScreenshot = true
         )
         {
             var bridgeType = ResolveAgentBridgeType();
             if (bridgeType == null)
                 return AgentBridgeNotInstalled();
 
-            return ResponseCallTool.Error(
-                "[Error] playtest-observe is not yet implemented. " +
-                "PlaytestRunner will be added to com.nyosegawa.agent-bridge in Phase 4. " +
-                "For now, use 'screenshot-debug' and 'game-state-text' to observe the current state.");
+            return MainThread.Instance.Run(() =>
+            {
+                var resultJson = InvokeStatic(bridgeType, "GetPlaytestResult", sessionId) as string;
+
+                if (string.IsNullOrEmpty(resultJson))
+                    return ResponseCallTool.Error("[Error] No playtest session found.");
+
+                if (includeScreenshot)
+                {
+                    var pngBytes = InvokeStatic(bridgeType, "GetPlaytestScreenshot", sessionId) as byte[];
+                    if (pngBytes != null && pngBytes.Length > 0)
+                    {
+                        return ResponseCallTool.Image(pngBytes, McpPlugin.Common.Consts.MimeType.ImagePng,
+                            $"[Success] Playtest result:\n{resultJson}");
+                    }
+                }
+
+                return ResponseCallTool.Text($"[Success] Playtest result:\n{resultJson}");
+            });
         }
     }
 }
